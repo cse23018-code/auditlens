@@ -129,28 +129,51 @@ public class AnalyticsRepository {
                             SUM(amount) AS total_spend
                     FROM    transactions
                     GROUP BY vendor_id
+                ),
+                weighted AS (
+                    SELECT  v.vendor_id,
+                            v.vendor_code,
+                            v.name      AS vendor_name,
+                            v.category,
+                            v.country,
+                            COALESCE(s.txn_count, 0)      AS txn_count,
+                            COALESCE(s.total_spend, 0)    AS total_spend,
+                            COALESCE(vf.finding_count, 0) AS finding_count,
+                            COALESCE(vf.critical_count,0) AS critical_count,
+                            COALESCE(vf.high_count, 0)    AS high_count,
+                            COALESCE(vf.exposure, 0)      AS exposure,
+                            -- severity-weighted exception load: critical counts
+                            -- five times a routine finding, high three times
+                            ( COALESCE(vf.critical_count,0) * 5
+                            + COALESCE(vf.high_count,0)     * 3
+                            + GREATEST(0, COALESCE(vf.finding_count,0)
+                                        - COALESCE(vf.critical_count,0)
+                                        - COALESCE(vf.high_count,0))
+                            ) AS raw_score
+                    FROM        vendors v
+                    JOIN        vendor_findings vf ON vf.vendor_id = v.vendor_id
+                    LEFT JOIN   spend s            ON s.vendor_id  = v.vendor_id
                 )
-                SELECT  v.vendor_id,
-                        v.vendor_code,
-                        v.name      AS vendor_name,
-                        v.category,
-                        v.country,
-                        COALESCE(s.txn_count, 0)      AS txn_count,
-                        COALESCE(s.total_spend, 0)    AS total_spend,
-                        COALESCE(vf.finding_count, 0) AS finding_count,
-                        COALESCE(vf.critical_count,0) AS critical_count,
-                        COALESCE(vf.high_count, 0)    AS high_count,
-                        COALESCE(vf.exposure, 0)      AS exposure,
-                        LEAST(100,
-                              COALESCE(vf.critical_count,0) * 20
-                            + COALESCE(vf.high_count,0)     * 10
-                            + COALESCE(vf.finding_count,0)  * 3
-                        ) AS risk_score,
-                        RANK() OVER (ORDER BY COALESCE(s.total_spend,0) DESC) AS spend_rank
-                FROM        vendors v
-                JOIN        vendor_findings vf ON vf.vendor_id = v.vendor_id
-                LEFT JOIN   spend s            ON s.vendor_id  = v.vendor_id
-                ORDER BY    risk_score DESC, exposure DESC
+                SELECT  w.vendor_id,
+                        w.vendor_code,
+                        w.vendor_name,
+                        w.category,
+                        w.country,
+                        w.txn_count,
+                        w.total_spend,
+                        w.finding_count,
+                        w.critical_count,
+                        w.high_count,
+                        w.exposure,
+                        -- indexed to the worst supplier in the population, so the
+                        -- score is a relative triage rank rather than a raw tally
+                        CAST(ROUND(100.0 * w.raw_score
+                                   / NULLIF(MAX(w.raw_score) OVER (), 0), 0) AS INT)
+                            AS risk_score,
+                        RANK() OVER (ORDER BY w.total_spend DESC)  AS spend_rank,
+                        RANK() OVER (ORDER BY w.raw_score DESC)    AS risk_rank
+                FROM        weighted w
+                ORDER BY    w.raw_score DESC, w.exposure DESC
                 LIMIT ?
                 """, limit);
     }
