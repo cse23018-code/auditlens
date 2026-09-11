@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AuditLens - Forensic Transaction Audit &amp; Risk Analytics</title>
+  <meta name="description" content="Java and SQL forensic audit engine that scans an accounts-payable ledger against ten internal controls and scores vendor risk.">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>&#128269;</text></svg>">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <div class="brand-mark" aria-hidden="true">AL</div>
+    <div class="brand-text">
+      <h1>AuditLens</h1>
+      <p>Forensic Transaction Audit &amp; Risk Analytics</p>
+    </div>
+  </div>
+  <div class="topbar-actions">
+    <div class="run-meta">
+      <span id="engine-badge" class="badge">engine v-</span>
+      <span id="scan-meta" class="meta-line">loading ledger&hellip;</span>
+    </div>
+    <button id="run-audit" class="btn-primary" type="button">Re-run audit</button>
+  </div>
+</header>
+
+<main>
+  <!-- ============================ KPI STRIP ============================ -->
+  <section class="kpi-strip" aria-label="Headline metrics">
+    <article class="kpi">
+      <p class="kpi-label">Transactions scanned</p>
+      <p class="kpi-value" id="kpi-txns">-</p>
+      <p class="kpi-sub" id="kpi-vendors">across - vendors</p>
+    </article>
+    <article class="kpi">
+      <p class="kpi-label">Ledger value</p>
+      <p class="kpi-value" id="kpi-spend">-</p>
+      <p class="kpi-sub">total accounts-payable spend</p>
+    </article>
+    <article class="kpi">
+      <p class="kpi-label">Exceptions raised</p>
+      <p class="kpi-value" id="kpi-findings">-</p>
+      <p class="kpi-sub" id="kpi-controls">from - controls</p>
+    </article>
+    <article class="kpi kpi-critical">
+      <p class="kpi-label"><span class="dot dot-critical" aria-hidden="true"></span>Critical</p>
+      <p class="kpi-value" id="kpi-critical">-</p>
+      <p class="kpi-sub" id="kpi-high">- high severity</p>
+    </article>
+    <article class="kpi">
+      <p class="kpi-label">Value at risk</p>
+      <p class="kpi-value" id="kpi-exposure">-</p>
+      <p class="kpi-sub">aggregate flagged exposure</p>
+    </article>
+    <article class="kpi">
+      <p class="kpi-label">Vendors flagged</p>
+      <p class="kpi-value" id="kpi-flagged">-</p>
+      <p class="kpi-sub">suppliers with >=1 exception</p>
+    </article>
+  </section>
+
+  <!-- ======================= SEVERITY + BENFORD ======================= -->
+  <section class="grid-2">
+    <article class="card">
+      <header class="card-head">
+        <h2>Exception profile by severity</h2>
+        <p class="card-sub">Every finding carries a severity and a monetary exposure.</p>
+      </header>
+      <div id="severity-bars" class="severity-bars"></div>
+      <div class="card-foot">
+        <div id="domain-chips" class="chips"></div>
+      </div>
+    </article>
+
+    <article class="card">
+      <header class="card-head">
+        <h2>Benford&rsquo;s Law &mdash; leading-digit distribution</h2>
+        <p class="card-sub">
+          Genuine invoice populations follow P(d)&nbsp;=&nbsp;log&#8321;&#8320;(1&nbsp;+&nbsp;1/d).
+          Departures flag values worth substantive testing.
+        </p>
+      </header>
+      <div class="legend" id="benford-legend"></div>
+      <div class="chart-wrap"><svg id="benford-chart" role="img"
+        aria-label="Observed versus expected leading-digit frequency"></svg></div>
+    </article>
+  </section>
+
+  <!-- ========================= SPEND TREND ========================= -->
+  <section class="card">
+    <header class="card-head">
+      <h2>Monthly ledger value</h2>
+      <p class="card-sub">Accounts-payable spend per period across the audited window.</p>
+    </header>
+    <div class="chart-wrap"><svg id="spend-chart" role="img"
+      aria-label="Monthly accounts-payable spend"></svg></div>
+  </section>
+
+  <!-- ======================== CONTROL CATALOGUE ======================== -->
+  <section class="card">
+    <header class="card-head">
+      <h2>Control catalogue</h2>
+      <p class="card-sub">
+        Ten independent controls are registered with the engine and executed against every run.
+      </p>
+    </header>
+    <div class="table-scroll">
+      <table class="data-table" id="rules-table">
+        <thead>
+          <tr>
+            <th scope="col">Code</th>
+            <th scope="col">Control</th>
+            <th scope="col">Domain</th>
+            <th scope="col">Severity</th>
+            <th scope="col" class="num">Findings</th>
+            <th scope="col" class="num">Exposure</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ======================== VENDOR RISK ======================== -->
+  <section class="card">
+    <header class="card-head">
+      <h2>Vendor risk register</h2>
+      <p class="card-sub">
+        Composite score weighting critical and high findings against spend concentration.
+      </p>
+    </header>
+    <div class="table-scroll">
+      <table class="data-table" id="vendor-table">
+        <thead>
+          <tr>
+            <th scope="col">Vendor</th>
+            <th scope="col">Category</th>
+            <th scope="col" class="num">Spend</th>
+            <th scope="col" class="num">Invoices</th>
+            <th scope="col" class="num">Findings</th>
+            <th scope="col" class="num">Exposure</th>
+            <th scope="col">Risk score</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ======================== EXCEPTION REGISTER ======================== -->
+  <section class="card">
+    <header class="card-head card-head-row">
+      <div>
+        <h2>Exception register</h2>
+        <p class="card-sub">Click a row to read the supporting evidence.</p>
+      </div>
+      <div class="filters">
+        <label class="field">
+          <span>Severity</span>
+          <select id="filter-severity">
+            <option value="">All</option>
+            <option value="CRITICAL">Critical</option>
+            <option value="HIGH">High</option>
+            <option value="MEDIUM">Medium</option>
+            <option value="LOW">Low</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>Control</span>
+          <select id="filter-rule"><option value="">All</option></select>
+        </label>
+        <label class="field field-grow">
+          <span>Search</span>
+          <input id="filter-text" type="search" placeholder="vendor, reference, keyword">
+        </label>
+      </div>
+    </header>
+    <p class="result-count" id="result-count"></p>
+    <div class="table-scroll">
+      <table class="data-table data-table-click" id="findings-table">
+        <thead>
+          <tr>
+            <th scope="col">Severity</th>
+            <th scope="col">Control</th>
+            <th scope="col">Vendor</th>
+            <th scope="col">Finding</th>
+            <th scope="col" class="num">Exposure</th>
+            <th scope="col" class="num">Score</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
+<footer class="site-foot">
+  <p>
+    AuditLens &middot; Java 21 &middot; Spring Boot &middot; SQL analytics engine &middot;
+    <span id="foot-generated"></span>
+  </p>
+  <p class="disclaimer">
+    Demonstration build. The ledger is synthetic data generated from a fixed seed;
+    all vendor and employee names are fictitious.
+  </p>
+</footer>
+
+<!-- Evidence drawer -->
+<div id="drawer" class="drawer" hidden>
+  <div class="drawer-panel" role="dialog" aria-modal="true" aria-labelledby="drawer-title">
+    <header class="drawer-head">
+      <div>
+        <p class="drawer-eyebrow" id="drawer-code"></p>
+        <h3 id="drawer-title"></h3>
+      </div>
+      <button id="drawer-close" class="btn-ghost" type="button" aria-label="Close">&times;</button>
+    </header>
+    <dl class="drawer-facts" id="drawer-facts"></dl>
+    <div class="drawer-evidence">
+      <h4>Supporting evidence</h4>
+      <p id="drawer-evidence"></p>
+    </div>
+  </div>
+</div>
+
+<div id="tooltip" class="tooltip" hidden></div>
+
+<script src="app.js"></script>
+</body>
+</html>
