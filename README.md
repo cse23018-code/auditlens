@@ -7,8 +7,8 @@ independent internal controls, quantifies the monetary exposure behind each
 exception, scores supplier risk, and serves the results through a REST API and an
 analytics dashboard.
 
-> **Live demo:** https://EnthusiastiCoder.github.io/auditlens/
-> **Source:** https://github.com/EnthusiastiCoder/auditlens
+> **Live demo:** https://cse23018-code.github.io/auditlens/
+> **Source:** https://github.com/cse23018-code/auditlens
 
 ---
 
